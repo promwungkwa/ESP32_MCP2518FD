@@ -16,7 +16,7 @@ void setup() {
 
   SPI.begin(18, 19, 23, MCP2518FD_CS);
 
-  ACAN2517FDSettings settings(ACAN2517FDSettings::OSC_20MHz, 500UL * 1000UL, ACAN2517FDSettings::DATA_BITRATE_x8);
+  ACAN2517FDSettings settings(ACAN2517FDSettings::OSC_20MHz, 500UL * 1000UL, DataBitRateFactor::x1);
 
   // 75% sample point matches Arduino Due / GVRET due_can default at 500 kbps.
   // 20 MHz / 500 kbps = 40 TQ/bit; sample at TQ 30 = 75%.
@@ -24,7 +24,6 @@ void setup() {
   settings.mArbitrationPhaseSegment1 = 29;
   settings.mArbitrationPhaseSegment2 = 10;
   settings.mArbitrationSJW           = 4;
-  settings.mDataSJW                  = 1;
 
   uint32_t errorCode = can.begin(settings, canISR);
 
@@ -53,6 +52,15 @@ void loop() {
     Serial.println();
   }
 
+  // --- Print error counters every 5 seconds ---
+  static uint32_t lastStatTime = 0;
+  if (millis() - lastStatTime > 5000) {
+    lastStatTime = millis();
+    const uint32_t trec = can.errorCounters();
+    Serial.printf("RXerr:%u TXerr:%u\n",
+                  trec & 0xFF, (trec >> 8) & 0xFF);
+  }
+
   // --- Transmit every 2 seconds ---
   static uint32_t lastTxTime = 0;
   if (millis() - lastTxTime > 2000) {
@@ -72,8 +80,10 @@ void loop() {
     txMessage.data[6] = 0x11;
     txMessage.data[7] = 0x22;
 
-    if (!can.tryToSend(txMessage)) {
-      Serial.println("TX failed");
+    if (can.tryToSend(txMessage)) {
+      Serial.printf("TX 0x%03X  AA BB CC DD EE FF 11 22\n", txMessage.id);
+    } else {
+      Serial.println("TX failed — buffer full or bus error");
     }
   }
 }
